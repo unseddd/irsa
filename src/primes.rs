@@ -119,14 +119,8 @@ pub fn generate_prime(
 
     /* The fail_count value comes from NIST FIPS 186-4, section B.3.3,
      * process steps 4.7 and 5.8.
-     * from NIST: 5 * (size / 2)
-     *
-     * However, noticing more frequent failures than desirable
-     * increased fail_count multiple by size / 4
-     *
-     * FIXME: are there any security consequences of increasing fail_count?
      * */
-    let fail_count = 5 * (size - (size / 4));
+    let fail_count = 5 * (size / 2);
     let mut i = 0;
 
     while i < fail_count {
