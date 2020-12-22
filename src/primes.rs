@@ -1,53 +1,26 @@
-//! From wolfSSL and TomsFastMath 0.10 by Tom St Denis:
-//! wolfssl/wolfcrypt/src/tfm.c
-//!
-//! http://math.libtomcrypt.com
-//!
-//! original C edited by Moises Guimaraes (moises@wolfssl.com)
-//! to fit wolfSSL's needs.
-//!
-//! Ported to Rust by Nym Seddon
+/// From wolfSSL and TomsFastMath 0.10 by Tom St Denis:
+///
+/// https://github.com/wolfssl/wolfssl/blob/master/wolfssl/wolfcrypt/src/tfm.c
+///
+/// http://math.libtomcrypt.com
+///
+/// original C edited by Moises Guimaraes (moises@wolfssl.com)
+/// to fit wolfSSL's needs.
+///
+/// Ported to Rust by Nym Seddon
 
 use alloc::vec::Vec;
 use num::bigint::BigUint;
 use num::{Integer, One, Zero};
 
 use rand::rngs::ThreadRng;
-use rand::{Rng, RngCore};
+use rand::Rng;
+
+use prime_math::is_prime;
 
 use crate::{length_check, Error};
 
-const PRIMES_LEN: usize = 256;
-
 const PRIME_BOUND_LEN: usize = 256;
-
-// First 256 primes
-//
-// From wolfSSL: wolfssl/wolfcrypt/src/tfm.c
-const PRIMES: [u16; PRIMES_LEN] = [
-    0x0002, 0x0003, 0x0005, 0x0007, 0x000b, 0x000d, 0x0011, 0x0013, 0x0017, 0x001d, 0x001f, 0x0025,
-    0x0029, 0x002b, 0x002f, 0x0035, 0x003b, 0x003d, 0x0043, 0x0047, 0x0049, 0x004f, 0x0053, 0x0059,
-    0x0061, 0x0065, 0x0067, 0x006b, 0x006d, 0x0071, 0x007f, 0x0083, 0x0089, 0x008b, 0x0095, 0x0097,
-    0x009d, 0x00a3, 0x00a7, 0x00ad, 0x00b3, 0x00b5, 0x00bf, 0x00c1, 0x00c5, 0x00c7, 0x00d3, 0x00df,
-    0x00e3, 0x00e5, 0x00e9, 0x00ef, 0x00f1, 0x00fb, 0x0101, 0x0107, 0x010d, 0x010f, 0x0115, 0x0119,
-    0x011b, 0x0125, 0x0133, 0x0137, 0x0139, 0x013d, 0x014b, 0x0151, 0x015b, 0x015d, 0x0161, 0x0167,
-    0x016f, 0x0175, 0x017b, 0x017f, 0x0185, 0x018d, 0x0191, 0x0199, 0x01a3, 0x01a5, 0x01af, 0x01b1,
-    0x01b7, 0x01bb, 0x01c1, 0x01c9, 0x01cd, 0x01cf, 0x01d3, 0x01df, 0x01e7, 0x01eb, 0x01f3, 0x01f7,
-    0x01fd, 0x0209, 0x020b, 0x021d, 0x0223, 0x022d, 0x0233, 0x0239, 0x023b, 0x0241, 0x024b, 0x0251,
-    0x0257, 0x0259, 0x025f, 0x0265, 0x0269, 0x026b, 0x0277, 0x0281, 0x0283, 0x0287, 0x028d, 0x0293,
-    0x0295, 0x02a1, 0x02a5, 0x02ab, 0x02b3, 0x02bd, 0x02c5, 0x02cf, 0x02d7, 0x02dd, 0x02e3, 0x02e7,
-    0x02ef, 0x02f5, 0x02f9, 0x0301, 0x0305, 0x0313, 0x031d, 0x0329, 0x032b, 0x0335, 0x0337, 0x033b,
-    0x033d, 0x0347, 0x0355, 0x0359, 0x035b, 0x035f, 0x036d, 0x0371, 0x0373, 0x0377, 0x038b, 0x038f,
-    0x0397, 0x03a1, 0x03a9, 0x03ad, 0x03b3, 0x03b9, 0x03c7, 0x03cb, 0x03d1, 0x03d7, 0x03df, 0x03e5,
-    0x03f1, 0x03f5, 0x03fb, 0x03fd, 0x0407, 0x0409, 0x040f, 0x0419, 0x041b, 0x0425, 0x0427, 0x042d,
-    0x043f, 0x0443, 0x0445, 0x0449, 0x044f, 0x0455, 0x045d, 0x0463, 0x0469, 0x047f, 0x0481, 0x048b,
-    0x0493, 0x049d, 0x04a3, 0x04a9, 0x04b1, 0x04bd, 0x04c1, 0x04c7, 0x04cd, 0x04cf, 0x04d5, 0x04e1,
-    0x04eb, 0x04fd, 0x04ff, 0x0503, 0x0509, 0x050b, 0x0511, 0x0515, 0x0517, 0x051b, 0x0527, 0x0529,
-    0x052f, 0x0551, 0x0557, 0x055d, 0x0565, 0x0577, 0x0581, 0x058f, 0x0593, 0x0595, 0x0599, 0x059f,
-    0x05a7, 0x05ab, 0x05ad, 0x05b3, 0x05bf, 0x05c9, 0x05cb, 0x05cf, 0x05d1, 0x05d5, 0x05db, 0x05e7,
-    0x05f3, 0x05fb, 0x0607, 0x060d, 0x0611, 0x0617, 0x061f, 0x0623, 0x062b, 0x062f, 0x063d, 0x0641,
-    0x0647, 0x0649, 0x064d, 0x0653,
-];
 
 /* From wolfSSL: wolfssl/wolfcrypt/src/rsa.c
  *
@@ -152,20 +125,6 @@ pub fn generate_prime(
     Err(Error::InvalidPrime)
 }
 
-/// Create a random BigUint of the given bit size
-///
-/// Caller must validate size
-pub(crate) fn init_bigint(size: usize, rng: &mut ThreadRng) -> BigUint {
-    let size_bytes = size / 8;
-
-    let mut buf: Vec<u8> = Vec::with_capacity(size_bytes);
-    buf.resize(size_bytes, 0);
-
-    rng.fill(buf.as_mut_slice());
-
-    BigUint::from_bytes_le(&buf)
-}
-
 // From wolfSSL: wolfssl/wolfcrypt/src/rsa.c
 //
 // Port of wc_CheckProbablePrime_ex
@@ -193,130 +152,4 @@ fn check_probable_prime(p: &BigUint, e: &BigUint, size: usize, rng: &mut ThreadR
      * M-R with the first 8 primes. Both functions set isPrime as a
      * side-effect. */
     is_prime(&p, 8, size, rng)
-}
-
-// From wolfSSL: wolfssl/wolfcrypt/src/tfm.c
-//
-// Port of mp_prime_is_prime_ex
-fn is_prime(p: &BigUint, t: u32, size: usize, rng: &mut ThreadRng) -> bool {
-    for prime in PRIMES.iter() {
-        let bn_p = BigUint::from_bytes_be(prime.to_be_bytes().as_ref());
-        // check against primes table
-        if *p == bn_p {
-            return true;
-        }
-
-        // do trial division
-        if p.mod_floor(&bn_p).is_zero() {
-            return false;
-        }
-    }
-
-    let two = BigUint::from_bytes_le(&[2]);
-    let c = p - &two;
-
-    for _t in 0..t {
-        let mut b = init_bigint(size, rng);
-
-        // divergence from wolfSSL, get a random number in range
-        // wolfSSL uses a while loop, and iterates without modifying the counter
-        if b < two {
-            b += rng.next_u32();
-        } else if b > c {
-            b = &c - rng.next_u32();
-        }
-
-        if !miller_rabin(&p, &b) {
-            return false;
-        }
-    }
-
-    true
-}
-
-/* Port of fp_prime_miller_rabin_ex from wolfSSL:
- * wolfssl/wolfcrypt/src/tfm.c
- *
- * Miller-Rabin test of "a" to the base of "b" as described in
- * HAC pp. 139 Algorithm 4.24
- *
- * Sets result to 0 if definitely composite or 1 if probably prime.
- * Randomly the chance of error is no more than 1/4 and often
- * very much lower.
- */
-fn miller_rabin(a: &BigUint, b: &BigUint) -> bool {
-    if b <= &One::one() {
-        return false;
-    }
-
-    let n1: BigUint = a - 1_u32;
-
-    // count the number of least significant bits that are zero
-    let s = count_lsb(&n1);
-
-    let two = BigUint::from_bytes_le(&[2]);
-
-    // compute 2**s
-    let two_s = two.pow(s);
-
-    // set r = n1 / 2**s
-    let r = n1.clone() / two_s;
-
-    // compute y = b**r mod a
-    let mut y = b.modpow(&r, &a);
-
-    if !y.is_one() && y != n1 {
-        let mut j = 1;
-
-        while j <= (s - 1) && y != n1 {
-            // y = a**2 mod y
-            y = a.modpow(&two, &y);
-
-            // if y == 1, then a is composite
-            if y.is_one() {
-                return false;
-            }
-
-            j += 1;
-        }
-
-        // if y != n1, then a is composite
-        if y != n1 {
-            return false;
-        }
-    }
-
-    return true;
-}
-
-// Count the number of zeroes in the least-significant bits
-#[inline(always)]
-fn count_lsb(n: &BigUint) -> u32 {
-    let mut res = 0_u32;
-
-    for &b in n.to_bytes_le().iter() {
-        if b == 0 {
-            res += 8;
-        } else {
-            if b & 0b0111_1111 == 0 {
-                res += 7;
-            } else if b & 0b0011_1111 == 0 {
-                res += 6;
-            } else if b & 0b0001_1111 == 0 {
-                res += 5;
-            } else if b & 0b0000_1111 == 0 {
-                res += 4;
-            } else if b & 0b0000_0111 == 0 {
-                res += 3;
-            } else if b & 0b0000_0011 == 0 {
-                res += 2;
-            } else if b & 0b0000_0001 == 0 {
-                res += 1;
-            }
-
-            break;
-        }
-    }
-
-    res
 }

@@ -10,12 +10,11 @@ use rand::thread_rng;
 mod der;
 mod hash;
 mod mask;
-mod math;
 mod oaep;
 pub mod pkcs1v1_5;
 mod primes;
 
-pub use math::inv_mod_slow;
+pub use prime_math::InvMod;
 
 /// Default RSA public exponent (from wolfSSL: wolfssl/wolfssl/wolfcrypt/rsa.h)
 pub const E: u32 = 65537;
@@ -273,7 +272,7 @@ impl RsaPrivateKey {
         let mut lcm = p1.lcm(&q1);
 
         // d = (1 / e) mod lcm(p - 1, q - 1)
-        let mut d = math::inv_mod_slow(&e, &lcm)?;
+        let mut d = e.invmod(&lcm);
         let mut n = p.clone();
         n *= &q;
 
@@ -287,7 +286,7 @@ impl RsaPrivateKey {
             dp: d.mod_floor(&p1),
             dq: d.mod_floor(&q1),
             // u = 1 / q mod p
-            invq: math::inv_mod_slow(&q, &p)?,
+            invq: q.invmod(&p),
         };
 
         // clear temporary variables
@@ -569,10 +568,12 @@ mod tests {
     use core::convert::{TryFrom, TryInto};
     use rand::thread_rng;
 
+    use prime_math::rand_biguint;
+
     use super::*;
 
     #[test]
-    fn check_inv_mod_slow() {
+    fn check_invmod() {
         let e = BigUint::from_bytes_le(E.to_le_bytes().as_ref());
         let mut rng = thread_rng();
         let one = One::one();
@@ -580,9 +581,9 @@ mod tests {
         // check E's inverse modulo random integers
         for _ in 0..10 {
             for &rsa_len in [RSA_1024_LEN, RSA_2048_LEN, RSA_3072_LEN, RSA_4096_LEN].iter() {
-                let k = primes::init_bigint(rsa_len, &mut rng);
+                let k = rand_biguint(rsa_len, &mut rng);
 
-                let mut inv_e = math::inv_mod_slow(&e, &k).unwrap();
+                let mut inv_e = e.invmod(&k);
 
                 inv_e *= &e;
                 inv_e = inv_e.mod_floor(&k);
@@ -595,7 +596,7 @@ mod tests {
                 k_lcm -= 1_u32;
                 k_lcm = k_lcm.lcm(&k);
 
-                inv_e = math::inv_mod_slow(&e, &k_lcm).unwrap();
+                inv_e = e.invmod(&k_lcm);
 
                 inv_e *= &e;
                 inv_e = inv_e.mod_floor(&k_lcm);
@@ -620,7 +621,7 @@ mod tests {
         // check E's inverse modulo random primes
         let k = primes::generate_prime(RSA_1024_LEN, &e, None, &mut rng).unwrap();
 
-        let mut inv_e = math::inv_mod_slow(&e, &k).unwrap();
+        let mut inv_e = e.invmod(&k);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k);
@@ -633,7 +634,7 @@ mod tests {
         k_lcm -= 1_u32;
         k_lcm = k_lcm.pow(2_u32);
 
-        inv_e = math::inv_mod_slow(&e, &k_lcm).unwrap();
+        inv_e = e.invmod(&k_lcm);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k_lcm);
@@ -656,7 +657,7 @@ mod tests {
         // check E's inverse modulo random primes
         let k = primes::generate_prime(RSA_2048_LEN, &e, None, &mut rng).unwrap();
 
-        let mut inv_e = math::inv_mod_slow(&e, &k).unwrap();
+        let mut inv_e = e.invmod(&k);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k);
@@ -669,7 +670,7 @@ mod tests {
         k_lcm -= 1_u32;
         k_lcm = k_lcm.pow(2_u32);
 
-        inv_e = math::inv_mod_slow(&e, &k_lcm).unwrap();
+        inv_e = e.invmod(&k_lcm);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k_lcm);
@@ -692,7 +693,7 @@ mod tests {
         // check E's inverse modulo random primes
         let k = primes::generate_prime(RSA_3072_LEN, &e, None, &mut rng).unwrap();
 
-        let mut inv_e = math::inv_mod_slow(&e, &k).unwrap();
+        let mut inv_e = e.invmod(&k);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k);
@@ -705,7 +706,7 @@ mod tests {
         k_lcm -= 1_u32;
         k_lcm = k_lcm.pow(2_u32);
 
-        inv_e = math::inv_mod_slow(&e, &k_lcm).unwrap();
+        inv_e = e.invmod(&k_lcm);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k_lcm);
@@ -720,14 +721,14 @@ mod tests {
     // run in release mode: cargo test --release
     // or comment the following annotation to run in debug mode
     #[cfg(not(debug_assertions))]
-    fn check_inv_mod_slow_4096() {
+    fn check_invmod_4096() {
         let e = BigUint::from_bytes_le(E.to_le_bytes().as_ref());
         let mut rng = thread_rng();
         let one = One::one();
 
         // check E's inverse modulo random primes
         let k = primes::generate_prime(RSA_4096_LEN, &e, None, &mut rng).unwrap();
-        let mut inv_e = math::inv_mod_slow(&e, &k).unwrap();
+        let mut inv_e = e.invmod(&k);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k);
@@ -741,7 +742,7 @@ mod tests {
         k_lcm -= 1_u32;
         k_lcm = k_lcm.pow(2_u32);
 
-        inv_e = math::inv_mod_slow(&e, &k_lcm).unwrap();
+        inv_e = e.invmod(&k_lcm);
 
         inv_e *= &e;
         inv_e = inv_e.mod_floor(&k_lcm);

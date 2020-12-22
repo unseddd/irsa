@@ -11,3 +11,4 @@ num = { version = "0.3", default-features = false, features = ["alloc", "num-big
 rand = "0.7"
 isha1 = { git = "https://github.com/unseddd/isha1", branch = "main" }
 isha256 = { git = "https://github.com/unseddd/isha256", branch = "main" }
+prime-math = { git = "https://github.com/unseddd/prime-math", branch = "main" }
