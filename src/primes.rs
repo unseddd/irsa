@@ -80,7 +80,27 @@ pub fn generate_prime(
     rng: &mut ThreadRng,
 ) -> Result<BigUint, Error> {
     length_check(size)?;
+    generate_prime_inner(size, e, p, rng)
+}
 
+/// INSECURE generate 128-bit prime for use in RSA private keys
+///
+/// Part of Cryptopals challenge #47
+pub(crate) fn generate_prime_insecure(
+    size: usize,
+    e: &BigUint,
+    p: Option<&BigUint>,
+    rng: &mut ThreadRng,
+) -> Result<BigUint, Error> {
+    generate_prime_inner(size, e, p, rng)
+}
+
+fn generate_prime_inner(
+    size: usize,
+    e: &BigUint,
+    p: Option<&BigUint>,
+    rng: &mut ThreadRng,
+) -> Result<BigUint, Error> {
     /* size is the size of n in bits
      * prime_size is in bytes
      *

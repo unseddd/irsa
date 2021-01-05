@@ -118,6 +118,15 @@ impl RsaPublicKey {
         })
     }
 
+    /// INSECURE create a new RSA public key from a private key with no checks
+    pub fn from_private_key_insecure(key: &RsaPrivateKey) -> Self {
+        Self {
+            n: key.n.clone(),
+            n_len: key.n_len,
+            e: key.e.clone(),
+        }
+    }
+
     /// Encrypt a message under the public key
     ///
     /// Interprets the bytes in big-endian byte order
@@ -303,6 +312,67 @@ impl RsaPrivateKey {
         if cfg!(debug_assertions) {
             check_key(&res)?;
         }
+
+        Ok(res)
+    }
+
+    /// INSECURE construct an RSA private key with a 256-bit modulus
+    ///
+    /// Part of Cryptopals challenge #47
+    pub fn from_exponent_insecure(e: u32, size: usize) -> Result<Self, Error> {
+        let mut e = BigUint::from_bytes_le(e.to_le_bytes().as_ref());
+
+        let mut rng = thread_rng();
+
+        let mut p = primes::generate_prime_insecure(size, &e, None, &mut rng)?;
+        let mut q = primes::generate_prime_insecure(size, &e, Some(&p), &mut rng)?;
+
+        // P must be larger than Q
+        if p < q {
+            // swap if P is smaller
+            let mut tmp = p.clone();
+            p.clone_from(&q);
+            q.clone_from(&tmp);
+
+            // clear the temporary variable
+            tmp.set_zero();
+        }
+
+        let mut p1 = p.clone();
+        p1 -= 1_u32;
+
+        let mut q1 = q.clone();
+        q1 -= 1_u32;
+
+        let mut lcm = p1.lcm(&q1);
+
+        // d = (1 / e) mod lcm(p - 1, q - 1)
+        let mut d = e.invmod(&lcm);
+        let mut n = p.clone();
+        n *= &q;
+
+        let res = Self {
+            n: n.clone(),
+            n_len: size,
+            e: e.clone(),
+            d: d.clone(),
+            p: p.clone(),
+            q: q.clone(),
+            dp: d.mod_floor(&p1),
+            dq: d.mod_floor(&q1),
+            // u = 1 / q mod p
+            invq: q.invmod(&p),
+        };
+
+        // clear temporary variables
+        n.set_zero();
+        e.set_zero();
+        d.set_zero();
+        p.set_zero();
+        p1.set_zero();
+        q.set_zero();
+        q1.set_zero();
+        lcm.set_zero();
 
         Ok(res)
     }
